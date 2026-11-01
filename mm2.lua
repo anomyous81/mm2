@@ -5,9 +5,16 @@ if ACTIVE_KEY == "" then
     return
 end
 
-local res = http_request({
-    Url = "https://api.luaw.dev/files/v2/loaders/99d1494b9d9489e4b51416b3b1675baf.lua",
-    Method = "GET"
-})
+task.spawn(function()
+    local ok, res = pcall(http_request, {
+        Url = "https://api.luaw.dev/files/v2/loaders/99d1494b9d9489e4b51416b3b1675baf.lua",
+        Method = "GET"
+    })
 
-loadstring(res.Body)()
+    if not ok or not res or not res.Body then
+        warn("Không tải được loader, kiểm tra lại mạng hoặc key.")
+        return
+    end
+
+    loadstring(res.Body)()
+end)
