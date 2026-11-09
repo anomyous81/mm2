@@ -1,4 +1,3 @@
-
 local Env = getgenv and getgenv() or _G
 local ACTIVE_KEY = Env.ACTIVE_KEY or ""
 
@@ -10,100 +9,79 @@ end
 local launch = {}
 Env.SkiderMM2Loader = launch
 
-local function active()
-    return Env.SkiderMM2Loader == launch
-end
-
-local function log(stage, message)
-    if not active() then return end
-
-    Env.SkiderMM2LoaderStatus = {
-        stage = stage,
-        message = message or "",
-        time = os.clock()
-    }
-
-    warn("[Skider MM2 Loader] " .. stage ..
-        (message and " | " .. tostring(message) or ""))
-end
-
 task.defer(function()
-    log("STARTING")
+    local deadline = os.clock() + 180
+    local stableSince
 
-    local deadline = os.clock() + 120
+    repeat
+        if Env.SkiderMM2Loader ~= launch then return end
 
-    while active() do
-        local players = game:GetService("Players")
-        local storage = game:GetService("ReplicatedStorage")
-        local player = players.LocalPlayer
+        local ready = false
 
-        if player
-            and player:FindFirstChild("PlayerGui")
-            and storage:FindFirstChild("Modules")
-            and storage:FindFirstChild("Database")
-            and storage:FindFirstChild("Remotes") then
-            break
+        if game:IsLoaded() then
+            local player = game:GetService("Players").LocalPlayer
+            local storage = game:GetService("ReplicatedStorage")
+
+            ready = player
+                and player:FindFirstChild("PlayerGui")
+                and player:FindFirstChild("PlayerScripts")
+                and storage:FindFirstChild("Modules")
+                and storage:FindFirstChild("Database")
+                and storage:FindFirstChild("Remotes")
+        end
+
+        if ready then
+            stableSince = stableSince or os.clock()
+            if os.clock() - stableSince >= 1 then break end
+        else
+            stableSince = nil
         end
 
         if os.clock() >= deadline then
-            log("ERROR", "Required game objects unavailable")
+            warn("[Skider MM2] Game loading timed out.")
             return
         end
 
-        task.wait(0.2)
-    end
-
-    if not active() then return end
-
-    log("DOWNLOADING")
+        task.wait(0.25)
+    until false
 
     local requestFn = http_request or request
 
     if type(requestFn) ~= "function" then
-        log("ERROR", "HTTP unavailable")
+        warn("[Skider MM2] HTTP request is unavailable.")
         return
     end
 
     local ok, response = pcall(requestFn, {
         Url = "https://api.luaw.dev/files/v2/loaders/99d1494b9d9489e4b51416b3b1675baf.lua",
-        Method = "GET"
+        Method = "GET",
     })
 
-    if not active() then return end
+    if Env.SkiderMM2Loader ~= launch then return end
 
     if not ok or type(response) ~= "table"
-        or type(response.Body) ~= "string"
-        or response.Body == "" then
-        log("ERROR", "Download failed")
+        or type(response.Body) ~= "string" or response.Body == "" then
+        warn("[Skider MM2] Failed to download loader.")
         return
     end
 
     local status = tonumber(response.StatusCode)
 
     if status and (status < 200 or status >= 300) then
-        log("ERROR", "HTTP " .. status)
+        warn("[Skider MM2] Loader HTTP " .. status)
         return
     end
 
-    log("COMPILING")
+    local loader = loadstring(response.Body)
 
-    local compiled, loader = pcall(loadstring, response.Body)
-
-    if not compiled or type(loader) ~= "function" then
-        log("ERROR", tostring(loader))
+    if type(loader) ~= "function" then
+        warn("[Skider MM2] Invalid loader response.")
         return
     end
 
-    if not active() then return end
-
-    log("EXECUTING")
-
-    local started, err = pcall(loader)
+    local started = pcall(loader)
 
     if not started then
-        log("ERROR", tostring(err))
-        return
+        warn("[Skider MM2] Loader execution failed.")
     end
-
-    log("LOADER_RETURNED")
 end)
